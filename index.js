@@ -26,7 +26,7 @@ const limitedAxios = {
 
 // Initialize Discord client
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
+    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 // Nintendo news page URL
@@ -315,6 +315,61 @@ limiter.on('depleted', () => {
 
 limiter.on('error', (err) => {
     console.error('Rate limiter error:', err);
+});
+
+// Add below the interactionCreate event handler
+client.on('messageCreate', async message => {
+    // Ignore messages from bots to prevent loops
+    if (message.author.bot) return;
+
+    // Check if the bot is mentioned
+    if (message.mentions.has(client.user)) {
+        // Get content without the mention
+        const content = message.content.replace(/<@!?(\d+)>/g, '').trim().toLowerCase();
+
+        // Check for different keywords
+        if (content === 'hello' || content === 'hi') {
+            await message.reply('Hello! I\'m a bot to fetch the latest Nintendo news. Mention me with "help" to learn more about my commands!');
+        }
+        else if (content === 'help' || content === 'commands') {
+            const helpEmbed = {
+                color: 0x0099ff,
+                title: 'Nintendo News Bot Help',
+                description: 'Here are the commands you can use:',
+                //const ALLOWED_CHANNEL_NAMES = ['nintendo-news', 'switch-updates', 'gaming-news'];
+                fields: [
+                    {
+                        name: '/nintendonews',
+                        value: 'Fetch the latest Nintendo news. You can specify the number of news items to fetch (1-5). Default is 3.'
+                    },
+                    {
+                        name: '/setupchannels',
+                        value: 'Create dedicated Nintendo news channels in your server (Admin only).'
+                    }
+                ],
+                footer: {
+                    text: 'Use these commands in #nintendo-news, #switch-updates, or #gaming-news channels.'
+                }
+            };
+
+            await message.reply({ embeds: [helpEmbed] });
+        }
+        else if (content.includes('nitendonews') || content.includes('search news')) {
+            await message.reply('To fetch the latest Nintendo news, use the `/nintendonews` command!');
+        }
+        else if (content.includes('setupchannels')) {
+            await message.reply('To create dedicated Nintendo news channels, use the `/setupchannels` command(Admin only).');
+        }
+        else if (content.includes('nitendo')) {
+            await message.reply('It looks like you\'re trying to say "Nintendo".');
+        }
+        else if (content.includes('nitendo news')) {
+            await message.reply('To fetch the latest Nintendo news, use the `/nintendonews` command!');
+        }
+        else {
+            await message.reply('Sorry, I don\'t understand that command. Use "help" to see the available commands.');
+        }
+    }
 });
 
 // Register slash commands when the bot is ready
