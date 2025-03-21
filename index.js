@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, EmbedBuilder, Routes, PermissionsBitField } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, Routes, PermissionsBitField, ApplicationCommandOptionType } from 'discord.js';
 import { REST } from '@discordjs/rest';
 import axios from 'axios';
 import { load } from 'cheerio';
