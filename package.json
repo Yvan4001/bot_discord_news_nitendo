@@ -9,6 +9,7 @@
   "dependencies": {
     "@discordjs/rest": "^1.0.0",
     "axios": "^1.0.0",
+    "bottleneck": "^2.19.5",
     "cheerio": "^1.0.0",
     "discord-api-types": "^0.37.119",
     "discord.js": "^14.0.0",

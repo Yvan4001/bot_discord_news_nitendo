@@ -4,10 +4,25 @@ import { REST } from '@discordjs/rest';
 import axios from 'axios';
 import { load } from 'cheerio';
 import dotenv from 'dotenv';
+import Bottleneck from 'bottleneck';
 
 // Initialize environment variables
 dotenv.config();
 const { BOT_TOKEN, CLIENT_ID } = process.env;
+
+// Create a rate limiter: 30 requests per minute (2000ms between each request)
+const limiter = new Bottleneck({
+    minTime: 2000,  // Minimum time between requests (2 seconds)
+    maxConcurrent: 1, // Process only one request at a time
+    reservoir: 30,  // 30 requests
+    reservoirRefreshAmount: 30,  // Refill 30 tokens
+    reservoirRefreshInterval: 60 * 1000  // Refill every 60 seconds (1 minute)
+});
+
+// Wrap axios with the rate limiter
+const limitedAxios = {
+    get: limiter.wrap(axios.get)
+};
 
 // Initialize Discord client
 const client = new Client({
@@ -20,24 +35,24 @@ const NINTENDO_NEWS_URL = 'https://www.nintendo.com/us/whatsnew/';
 const ALLOWED_CHANNEL_NAMES = ['nintendo-news', 'switch-updates', 'gaming-news'];
 
 // Helper function to fetch article details
-async function fetchArticleDetails(url) {
+async function fetchArticleDetails (url) {
     try {
-        const response = await axios.get(url);
+        const response = await limitedAxios.get(url);
         const $ = load(response.data);
-        
+
         // Try to find the main image
-        let imageUrl = $('meta[property="og:image"]').attr('content') || 
-                      $('meta[name="twitter:image"]').attr('content') ||
-                      $('.article-header img').attr('src') ||
-                      $('.article-content img').first().attr('src') ||
-                      $('img').first().attr('src');
-                      
+        let imageUrl = $('meta[property="og:image"]').attr('content') ||
+            $('meta[name="twitter:image"]').attr('content') ||
+            $('.article-header img').attr('src') ||
+            $('.article-content img').first().attr('src') ||
+            $('img').first().attr('src');
+
         // Try to find a better description
         let description = $('meta[property="og:description"]').attr('content') ||
-                         $('meta[name="description"]').attr('content') ||
-                         $('.article-content p').first().text().trim() ||
-                         '';
-                         
+            $('meta[name="description"]').attr('content') ||
+            $('.article-content p').first().text().trim() ||
+            '';
+
         return {
             imageUrl: imageUrl || '',
             description: description || 'Nintendo news update'
@@ -49,10 +64,10 @@ async function fetchArticleDetails(url) {
 }
 
 // Function to fetch and parse Nintendo news
-async function fetchNintendoNews(limit = 5) {
+async function fetchNintendoNews (limit = 5) {
     try {
         console.log(`Fetching news from ${NINTENDO_NEWS_URL}...`);
-        const response = await axios.get(NINTENDO_NEWS_URL);
+        const response = await limitedAxios.get(NINTENDO_NEWS_URL);
         const $ = load(response.data);
         const newsItems = [];
 
@@ -92,9 +107,9 @@ async function fetchNintendoNews(limit = 5) {
             const $img = $(img);
             const src = $img.attr('src');
             const alt = $img.attr('alt') || '';
-            
+
             if (src && (
-                alt.toLowerCase().includes('news') || 
+                alt.toLowerCase().includes('news') ||
                 $img.parent().text().toLowerCase().includes('news') ||
                 src.toLowerCase().includes('news')
             )) {
@@ -285,6 +300,23 @@ const commands = [
     }
 ];
 
+// Add this after creating the limiter
+limiter.on('received', () => {
+    console.log(`Rate limit: ${limiter.counts().RECEIVED} requests received`);
+});
+
+limiter.on('queued', () => {
+    console.log(`Rate limit: ${limiter.counts().QUEUED} requests queued`);
+});
+
+limiter.on('depleted', () => {
+    console.log('Rate limit depleted - waiting for refresh');
+});
+
+limiter.on('error', (err) => {
+    console.error('Rate limiter error:', err);
+});
+
 // Register slash commands when the bot is ready
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
@@ -306,7 +338,7 @@ client.once('ready', async () => {
 client.on('guildCreate', async guild => {
     try {
         console.log(`Joined a new guild: ${guild.name} (${guild.id}). Registering slash commands...`);
-        
+
         await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, guild.id),
             { body: commands },
@@ -330,17 +362,24 @@ client.on('interactionCreate', async interaction => {
 
     // Get command info from the interaction
     const { commandName, options } = interaction;
-    
+
     if (commandName === 'nintendonews') {
         await interaction.deferReply();
-    
+
         try {
-            const count = options.getInteger('count') || 3; // Default to 3 if not specified
-            
+            const count = options.getInteger('count') || 3;
+
             // Check for any of the allowed channels
             let targetChannel = null;
             let channelName = '';
-            
+
+            // Add this warning for larger requests
+            if (count > 3) {
+                await interaction.editReply(`Fetching ${count} Nintendo news items... This may take a bit longer due to rate limiting (max 30 requests per minute).`);
+            } else {
+                await interaction.editReply(`Fetching Nintendo news... This will be posted in ${targetChannel}.`);
+            }
+
             // Only try to find/create channels if we're in a guild
             if (interaction.guild) {
                 // First, check if any of the allowed channels exist
@@ -348,7 +387,7 @@ client.on('interactionCreate', async interaction => {
                     const foundChannel = interaction.guild.channels.cache.find(
                         ch => ch.name === allowedChannel && ch.type === 0 // 0 is text channel
                     );
-                    
+
                     if (foundChannel) {
                         targetChannel = foundChannel;
                         channelName = allowedChannel;
@@ -356,19 +395,19 @@ client.on('interactionCreate', async interaction => {
                         break;
                     }
                 }
-                
+
                 // If no allowed channel exists, create one
                 if (!targetChannel) {
                     try {
                         console.log('No allowed channels found, creating one...');
-                        
+
                         // Check if the bot has permission to create channels
                         const botPerms = interaction.guild.members.me.permissions;
                         if (!botPerms.has(PermissionsBitField.Flags.ManageChannels)) {
                             await interaction.editReply("I don't have permission to create channels. Please create a #nintendo-news channel or give me the 'Manage Channels' permission.");
                             return;
                         }
-                        
+
                         // Create the default channel (first in the list)
                         channelName = ALLOWED_CHANNEL_NAMES[0];
                         targetChannel = await interaction.guild.channels.create({
@@ -392,7 +431,7 @@ client.on('interactionCreate', async interaction => {
                             ],
                             reason: 'Created for Nintendo News'
                         });
-                        
+
                         await interaction.editReply(`Created new channel #${channelName} for Nintendo news!`);
                     } catch (createError) {
                         console.error('Error creating channel:', createError);
@@ -404,33 +443,33 @@ client.on('interactionCreate', async interaction => {
                 // We're not in a guild (DM), use the current channel
                 targetChannel = interaction.channel;
             }
-            
+
             // If we still don't have a target channel, fall back to current channel
             if (!targetChannel) {
                 targetChannel = interaction.channel;
             }
-            
+
             // Make sure the bot has the necessary permissions in the target channel
             try {
                 const permissions = targetChannel.permissionsFor(interaction.client.user);
-                if (!permissions || 
-                    !permissions.has(PermissionsBitField.Flags.SendMessages) || 
+                if (!permissions ||
+                    !permissions.has(PermissionsBitField.Flags.SendMessages) ||
                     !permissions.has(PermissionsBitField.Flags.EmbedLinks)) {
-                    
+
                     await interaction.editReply(`I don't have permission to send messages in ${targetChannel}. Please give me proper permissions.`);
                     return;
                 }
             } catch (err) {
                 console.error('Error checking permissions:', err);
             }
-    
+
             await interaction.editReply(`Fetching Nintendo news... This will be posted in ${targetChannel}.`);
             let newsItems = await fetchNintendoNews(count);
-            
+
             // Process and send news items
             if (newsItems.length > 0) {
                 await interaction.editReply(`Found ${newsItems.length} Nintendo news items! Posting to ${targetChannel}.`);
-                
+
                 // Process each news item and send to the target channel
                 for (const news of newsItems) {
                     // [existing code to process article details]
@@ -438,11 +477,11 @@ client.on('interactionCreate', async interaction => {
                         console.log(`Fetching details for article: ${news.title}`);
                         try {
                             const articleDetails = await fetchArticleDetails(news.link);
-                            
+
                             if (!news.imageUrl && articleDetails.imageUrl) {
                                 news.imageUrl = articleDetails.imageUrl;
                             }
-                            
+
                             if (news.description === 'Nintendo news update' && articleDetails.description !== 'Nintendo news update') {
                                 news.description = articleDetails.description;
                             }
@@ -450,11 +489,11 @@ client.on('interactionCreate', async interaction => {
                             console.error('Error fetching article details:', detailsError);
                         }
                     }
-                    
+
                     // [existing code to truncate titles]
                     let title = news.title;
                     let description = news.description;
-                    
+
                     if (title && title.length > 250) {
                         const breakPoint = title.indexOf('.');
                         if (breakPoint > 10 && breakPoint < 240) {
@@ -465,37 +504,70 @@ client.on('interactionCreate', async interaction => {
                             title = title.substring(0, 250) + '...';
                         }
                     }
-                    
-                    // Create the embed
+
+                    // Create the embed with improved article design
                     const newsEmbed = new EmbedBuilder()
-                        .setColor('#E60012') // Nintendo red
+                        .setColor('#ff0000') // Nintendo red
                         .setTitle(title)
                         .setURL(news.link);
-                    
-                    if (description) {
-                        if (description.length > 4000) {
-                            description = description.substring(0, 4000) + '...';
-                        }
-                        newsEmbed.setDescription(description);
-                    }
-                    
+
+                    // Format the description to look more like an article
+                    let formattedDescription = '';
+
+                    // Add date at the top if available
                     if (news.date) {
-                        newsEmbed.addFields({ name: 'Published', value: news.date });
+                        formattedDescription += `📅 **Published:** ${news.date}\n\n`;
                     }
-                    
+
+                    // Add the article content with proper formatting
+                    if (description) {
+                        // Clean up the description and format it
+                        description = description.trim();
+
+                        // Split into paragraphs for better readability
+                        const paragraphs = description.split('\n').filter(p => p.trim().length > 0);
+
+                        // Add formatted paragraphs
+                        formattedDescription += paragraphs.map(p => `${p}`).join('\n\n');
+
+                        // Add a "Read more" link at the bottom
+                        formattedDescription += `\n\n[**Read the full article on Nintendo.com →**](${news.link})`;
+
+                        // Make sure it's not too long
+                        if (formattedDescription.length > 4000) {
+                            formattedDescription = formattedDescription.substring(0, 3950) + '...\n\n' +
+                                `[**Read the full article on Nintendo.com →**](${news.link})`;
+                        }
+
+                        newsEmbed.setDescription(formattedDescription);
+                    }
+
+                    // Add the author info at the top
+                    newsEmbed.setAuthor({
+                        name: 'Nintendo News',
+                        iconURL: 'https://assets.nintendo.com/image/upload/f_auto/q_auto/dpr_2.0/c_scale,w_300/Dev/nin-design-system/icons/favicon.png',
+                        url: 'https://www.nintendo.com/us/whatsnew/'
+                    });
+
+                    // Add the image if available
                     if (news.imageUrl) {
                         newsEmbed.setImage(news.imageUrl);
                     }
-                    
-                    newsEmbed.setFooter({ text: 'Nintendo News' });
-                    
-                    // Send the embed to the target channel instead of as a reply
+
+                    // Add a more professional footer with timestamp
+                    newsEmbed.setFooter({
+                        text: 'Nintendo News • Shared via Nintendo News Bot',
+                        iconURL: client.user.displayAvatarURL()
+                    })
+                        .setTimestamp();
+
+                    // Send the embed to the target channel
                     await targetChannel.send({ embeds: [newsEmbed] });
                 }
-                
+
                 // Final confirmation
                 await interaction.editReply(`Successfully posted ${newsItems.length} Nintendo news items to ${targetChannel}!`);
-                
+
             } else {
                 await interaction.editReply('No Nintendo news items could be found.');
             }
@@ -503,8 +575,8 @@ client.on('interactionCreate', async interaction => {
             console.error('Error processing Nintendo news:', error);
             await interaction.editReply('Sorry, I couldn\'t fetch Nintendo news at this time: ' + error.message);
         }
-    } 
-    
+    }
+
     if (commandName === 'setupchannels') {
         // Only respond to guild commands, not DMs
         if (!interaction.guild) {
@@ -514,28 +586,28 @@ client.on('interactionCreate', async interaction => {
             });
             return;
         }
-        
+
         await interaction.deferReply({ ephemeral: true });
-        
+
         // Check if user has admin permissions
         if (!interaction.memberPermissions.has(PermissionsBitField.FLAGS.ADMINISTRATOR)) {
             await interaction.editReply('You need administrator permissions to use this command.');
             return;
         }
-        
+
         try {
             const guild = interaction.guild;
-            
+
             // Create the bot role if it doesn't exist
             let botRole = guild.roles.cache.find(role => role.name === 'Nintendo News Bot');
             if (!botRole) {
                 botRole = await guild.roles.create({
                     name: 'Nintendo News Bot',
-                    color: 'RED',
+                    color: 'Green',
                     reason: 'Role for Nintendo News Bot',
                     permissions: []  // No special permissions in the role itself
                 });
-                
+
                 // Try to assign the role to the bot
                 try {
                     const botMember = await guild.members.fetch(client.user.id);
@@ -545,12 +617,12 @@ client.on('interactionCreate', async interaction => {
                     // Continue anyway since the channels can still work
                 }
             }
-            
+
             // Create the channels
             const createdChannels = [];
             for (const channelName of ALLOWED_CHANNEL_NAMES) {
                 let channel = guild.channels.cache.find(ch => ch.name === channelName);
-                
+
                 if (!channel) {
                     try {
                         channel = await guild.channels.create({
@@ -560,7 +632,7 @@ client.on('interactionCreate', async interaction => {
                                 {
                                     id: guild.id, // @everyone role
                                     allow: [PermissionsBitField.Flags.ViewChannel],
-                                    deny: [] 
+                                    deny: []
                                 },
                                 {
                                     id: client.user.id, // The bot itself
@@ -584,7 +656,7 @@ client.on('interactionCreate', async interaction => {
                     }
                 }
             }
-            
+
             if (createdChannels.length > 0) {
                 await interaction.editReply(`Successfully created channels: #${createdChannels.join(', #')}`);
             } else {
