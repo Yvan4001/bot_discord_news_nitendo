@@ -256,9 +256,9 @@ async function fetchNintendoNews(limit = 5) {
 }
 
 // Initialize REST API client
-const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
+const rest = new REST({ version: '9' }).setToken(BOT_TOKEN);
+client.login(BOT_TOKEN);
 
-// Define commands
 // Define commands
 const commands = [
     {
@@ -306,7 +306,11 @@ client.once('ready', async () => {
 client.on('guildCreate', async guild => {
     try {
         console.log(`Joined a new guild: ${guild.name} (${guild.id}). Registering slash commands...`);
-
+        
+        await rest.put(
+            Routes.applicationGuildCommands(CLIENT_ID, guild.id),
+            { body: commands },
+        );
         // Fix: use CLIENT_ID instead of env.CLIENT_ID
         await rest.put(
             Routes.applicationGuildCommands(CLIENT_ID, guild.id),
@@ -592,6 +596,3 @@ client.on('interactionCreate', async interaction => {
         }
     }
 });
-
-// Login the bot
-client.login(BOT_TOKEN);
