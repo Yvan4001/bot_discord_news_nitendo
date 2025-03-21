@@ -9,7 +9,7 @@ Add this bot to your Discord server:
 [Invite Link](https://discord.com/oauth2/authorize?client_id=1352592460664016916)
 
 ## Usage
-To use the bot, simply type `/nintendonews` followed by the number of news items you want to fetch last from [Nintendo](https://www.nintendo.com/us/whatsnew/). You can see the results in canals `#bot` or `#anime-manga`.
+To use the bot, simply type `/nintendonews` followed by the number of news items you want to fetch last from [Nintendo](https://www.nintendo.com/us/whatsnew/). You can see the results in canals `#nitendo-news`.
 
 ## Roles and Permissions
 This bot requires the following roles:
@@ -40,7 +40,7 @@ If you want to run or modify this bot locally:
    ```sh
    npm install
    ```
-3. Update `config.json` with your Discord bot token and client ID.
+3. Update `.env` with your Discord bot token and client ID.
 4. Run the bot:
    ```sh
    node index.js
@@ -50,9 +50,6 @@ If you want to run or modify this bot locally:
 - Node.js (v14.x or newer)
 - Discord.js v14
 - A Discord bot token
-
-## Credits
-This bot uses the Jikan API to fetch anime and manga data from MyAnimeList.
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
