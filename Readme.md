@@ -1,9 +1,8 @@
 # Nitendo Last News Discord Bot
-A powerful Discord bot that allows users to search for anime and manga information using the MyAnimeList database via the Jikan API.
+A powerful Discord bot that allows users to search for last news to website nitendo.
 
 ## Features
 - Search last news from [Nintendo](https://www.nintendo.com/us/whatsnew/)
-- 
 
 Add this bot to your Discord server:
 [Invite Link](https://discord.com/oauth2/authorize?client_id=1352592460664016916)
