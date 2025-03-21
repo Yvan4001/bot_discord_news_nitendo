@@ -1,6 +1,20 @@
-MIT License
+# License for Discord Bot
 
-Copyright (c) 2025 Yvan Simon
+## Disclaimer for Search Commands
+This Discord Bot includes search functionality which retrieves information from external sources. 
+The developers are not responsible for:
+1. The accuracy of any information retrieved
+2. Any offensive, inappropriate, or illegal content that may be returned
+3. Any damage or consequences that arise from using search commands
+4. Service interruptions or failures of external APIs
+
+By using any search command, you agree to take full responsibility for the results obtained.
+
+## Software License
+This project is available under one of the following licenses at your option:
+
+### MIT License
+Copyright (c) 2025 Simon Yvan
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
